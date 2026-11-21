@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+ <title>Repartiment Blat de Moro - Tragsa</title>
+ <link rel="manifest" href="manifest.json">
+ <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png?v=2">
+ <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=2">
+ <meta name="theme-color" content="#15803d">
+ <script src="https://cdn.tailwindcss.com"></script>
+ <script>
+ tailwind.config = {
+   theme: {
+     extend: {
+       colors: {
+         brand: {
+           50: '#f0fdf4', 100: '#dcfce7', 200: '#bbf7d0',
+           300: '#86efac', 400: '#4ade80', 500: '#22c55e',
+           600: '#16a34a', 700: '#15803d', 800: '#166534',
+         }
+       }
+     }
+   }
+ }
+ </script>
+ <style>
+ #signatureCanvas { touch-action: none; }
+ body { background-color: #f8fafc; }
+ input[type="number"]::-webkit-inner-spin-button,
+ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+ input[type="number"] { -moz-appearance: textfield; }
+
+ .welcome-screen {
+   position: fixed;
+   inset: 0;
+   z-index: 100;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   background: #fff;
+   padding: 16px 24px max(24px, env(safe-area-inset-bottom));
+ }
+ .welcome-screen[hidden] { display: none; }
+ .welcome-image { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+ .welcome-enter {
+   flex-shrink: 0;
+   width: 100%;
+   max-width: 360px;
+   padding: 16px 24px;
+   border: 0;
+   border-radius: 12px;
+   background: #15803d;
+   color: #fff;
+   font: inherit;
+   font-weight: 700;
+   cursor: pointer;
+ }
+ .welcome-enter:hover { background: #166534; }
+ </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+ <!-- PANTALLA DE BENVINGUDA -->
+ <section id="welcomeScreen" class="welcome-screen" aria-label="Benvinguda al repartiment de blat de moro">
+   <img src="benvinguda-tragsa.jpg" alt="Grupo Tragsa" class="welcome-image" fetchpriority="high">
+   <form id="loginForm" class="w-full max-w-[360px] mt-4 flex flex-col gap-3 shrink-0">
+     <input type="text" name="username" value="Repartiment Blat de Moro" autocomplete="username" class="hidden" readonly>
+     <input
+       type="password"
+       id="passwordInput"
+       name="password"
+       placeholder="Introdueix la contrasenya"
+       autocomplete="current-password"
+       class="w-full p-3.5 border border-slate-300 rounded-xl text-center text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
+       required
+       autofocus
+     >
+     <label class="flex items-center justify-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+       <input type="checkbox" id="rememberPass" class="w-4 h-4 accent-brand-700 rounded" checked>
+       Recordar en aquest dispositiu
+     </label>
+     <p id="passwordError" class="hidden text-sm text-red-600 font-medium text-center">Contrasenya incorrecta.</p>
+     <button id="enterInventory" type="submit" class="welcome-enter">Entrar al repartiment</button>
+   </form>
+ </section>
+
+ <!-- CAPÇALERA -->
+ <header inert class="bg-brand-700 text-white p-4 shadow-md sticky top-0 z-20 h-[68px]">
+   <div class="max-w-md mx-auto flex items-center justify-between gap-3">
+     <div class="flex items-center gap-3 min-w-0">
+       <img src="logo-montmelo.jpg" alt="Logo Tragsa" width="200" height="200" class="h-11 w-11 shrink-0 rounded-lg bg-white object-contain">
+       <div class="min-w-0">
+         <h1 class="text-base sm:text-lg font-bold leading-tight truncate">Repartiment Blat de Moro</h1>
+         <p id="headerProgress" class="text-xs text-brand-100">Carregant estat...</p>
+       </div>
+     </div>
+     <button type="button" onclick="fetchStatus()" title="Actualitzar estat" class="p-2 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition shrink-0" aria-label="Actualitzar estat">
+       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+       </svg>
+     </button>
+   </div>
+ </header>
+
+ <main inert class="flex-grow p-3 sm:p-4 max-w-md mx-auto w-full pb-24">
+
+   <!-- OVERLAY DE CÀRREGA -->
+   <div id="loadingOverlay" class="fixed inset-0 bg-white/80 z-50 flex flex-col items-center justify-center hidden">
+     <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-700 mb-4"></div>
+     <p class="text-lg font-semibold text-brand-800" id="loadingText">Registrant entrega...</p>
+   </div>
+
+   <!-- MODAL DE RESUM ABANS D'ENVIAR -->
+   <div id="summaryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+       <div class="p-4 bg-brand-700 text-white flex justify-between items-center">
+         <h2 id="summaryTitle" class="text-lg font-bold">Confirmar entrega</h2>
+         <span id="summaryMatriculaBadge" class="bg-white/20 text-white text-xs font-bold px-2.5 py-1 rounded-full"></span>
+       </div>
+       <div class="p-4 overflow-y-auto flex-1 space-y-3 text-sm">
+         <div class="bg-brand-50 border border-brand-200 p-3 rounded-xl space-y-1">
+           <p class="font-bold text-brand-800 text-base" id="summarySocietat"></p>
+           <p class="text-slate-600"><span class="font-semibold">Quantitat:</span> <span id="summaryQty"></span></p>
+         </div>
+         <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-1.5 text-slate-700">
+           <p><span class="font-semibold text-slate-900">Rebut per:</span> <span id="summaryReceiver"></span></p>
+           <p><span class="font-semibold text-slate-900">Entregat per:</span> <span id="summaryWorker"></span></p>
+           <p><span class="font-semibold text-slate-900">Data i hora:</span> <span id="summaryDate"></span></p>
+         </div>
+         <div id="summaryObsContainer" class="hidden">
+           <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Observacions</h3>
+           <p id="summaryObsText" class="text-sm text-slate-700 bg-amber-50 border border-amber-200 p-3 rounded-lg whitespace-pre-wrap"></p>
+         </div>
+       </div>
+       <div class="p-4 border-t border-slate-200 bg-slate-50 flex gap-3">
+         <button type="button" id="cancelSummaryBtn" class="flex-1 py-3 px-4 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-100 transition">
+           Revisar
+         </button>
+         <button type="button" id="confirmSendBtn" class="flex-1 py-3 px-4 rounded-xl bg-brand-600 text-white font-bold shadow hover:bg-brand-700 active:scale-95 transition">
+           Confirmar i Desar
+         </button>
+       </div>
+     </div>
+   </div>
+
+   <!-- PANTALLA D'ÈXIT -->
+   <div id="successScreen" class="hidden flex flex-col items-center justify-center py-12 text-center">
+     <div class="w-20 h-20 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mb-6">
+       <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+       </svg>
+     </div>
+     <h2 class="text-2xl font-bold text-slate-800 mb-2">Entrega registrada!</h2>
+     <p id="successSubtitle" class="text-slate-600 mb-8">Dades i signatura guardades correctament.</p>
+     <button type="button" onclick="shareWhatsApp()" class="bg-[#25D366] text-white font-semibold py-3 px-6 rounded-xl shadow hover:bg-[#1ebe5d] active:scale-95 transition w-full max-w-xs mb-3 flex items-center justify-center gap-2">
+       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-current" viewBox="0 0 24 24">
+         <path d="M12.031 2C6.502 2 2 6.502 2 12.031c0 1.768.462 3.495 1.339 5.018L2 22l5.093-1.335a9.97 9.97 0 004.938 1.298h.004c5.529 0 10.031-4.502 10.031-10.031C22.066 6.502 17.56 2 12.031 2zm5.847 14.234c-.246.693-1.433 1.325-1.992 1.409-.51.076-1.171.108-1.889-.12-.436-.138-.996-.324-1.714-.634-3.014-1.302-4.982-4.34-5.132-4.54-.15-.2-1.224-1.629-1.224-3.107 0-1.478.774-2.204 1.049-2.504.275-.3.6-.375.8-.375.2 0 .4.002.575.01.185.009.433-.07.677.516.25.6.85 2.075.925 2.225.075.15.125.325.025.525-.1.2-.15.325-.3.5-.15.175-.315.39-.45.525-.15.15-.307.312-.132.612.175.3.778 1.284 1.67 2.08 1.148 1.023 2.115 1.34 2.415 1.49.3.15.475.125.65-.075.175-.2.75-.875.95-1.175.2-.3.4-.25.675-.15.275.1 1.75.825 2.05.975.3.15.5.225.575.35.075.125.075.725-.171 1.418z"/>
+       </svg>
+       Compartir per WhatsApp
+     </button>
+     <button onclick="resetForm()" class="bg-brand-600 text-white font-semibold py-3 px-8 rounded-xl shadow hover:bg-brand-700 transition w-full max-w-xs">
+       Registrar una altra entrega
+     </button>
+   </div>
+
+   <!-- FORMULARI PRINCIPAL -->
+   <div id="formContainer" class="space-y-5">
+
+     <div id="errorBanner" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative text-sm" role="alert">
+       <span class="block" id="errorMessage">Error.</span>
+     </div>
+
+     <!-- 1. SELECCIÓ DE SOCIETAT / MATRÍCULA -->
+     <section class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-slate-100">
+       <div class="flex justify-between items-center mb-3 border-b pb-2">
+         <h2 class="text-lg font-semibold text-slate-700">1. Societat / Matrícula</h2>
+         <span id="statusCounts" class="text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full border border-brand-200">0 / 25</span>
+       </div>
+
+       <!-- Camp directe de Matrícula / Codi -->
+       <div class="mb-3">
+         <label for="matriculaInput" class="block text-sm font-medium text-slate-700 mb-1">Matrícula o Codi de societat</label>
+         <div class="relative">
+           <input type="text" id="matriculaInput" oninput="onMatriculaInput()" placeholder="Ex: B-10109 o busca per nom..." class="w-full p-3 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition uppercase font-medium" required>
+           <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+             <span class="text-slate-400">🔍</span>
+           </div>
+           <button type="button" id="clearMatriculaBtn" onclick="clearSelection()" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 font-bold text-lg">×</button>
+         </div>
+       </div>
+
+       <!-- Filtres ràpids -->
+       <div class="flex gap-1.5 mb-3">
+         <button type="button" onclick="setFilter('PENDENT')" id="btnFilterPendent" class="flex-1 py-1.5 px-2 text-xs font-bold rounded-lg border transition bg-brand-600 text-white border-brand-600">Pendents</button>
+         <button type="button" onclick="setFilter('ENTREGAT')" id="btnFilterEntregat" class="flex-1 py-1.5 px-2 text-xs font-bold rounded-lg border transition bg-white text-slate-600 border-slate-300">Entregats</button>
+         <button type="button" onclick="setFilter('TOTS')" id="btnFilterTots" class="flex-1 py-1.5 px-2 text-xs font-bold rounded-lg border transition bg-white text-slate-600 border-slate-300">Tots (25)</button>
+       </div>
+
+       <!-- Targeta de la societat seleccionada -->
+       <div id="selectedSocietyCard" class="hidden mb-3 p-3.5 rounded-xl bg-brand-50 border-2 border-brand-500 space-y-1.5">
+         <div class="flex justify-between items-start gap-2">
+           <div>
+             <span id="selMatricula" class="inline-block text-xs font-bold bg-brand-700 text-white px-2 py-0.5 rounded"></span>
+             <h3 id="selTitular" class="font-bold text-slate-800 text-sm mt-1"></h3>
+           </div>
+           <span id="selStatusBadge" class="text-xs font-bold px-2 py-1 rounded-full shrink-0"></span>
+         </div>
+         <p id="selUbicacio" class="text-xs text-slate-600"></p>
+         <div class="flex gap-3 pt-1 text-xs font-semibold text-brand-800">
+           <span id="selSacs" class="bg-white px-2.5 py-1 rounded-md border border-brand-200"></span>
+           <span id="selKg" class="bg-white px-2.5 py-1 rounded-md border border-brand-200"></span>
+         </div>
+         <p id="selContacte" class="text-xs text-slate-700 pt-1"></p>
+         <p id="selObsOrig" class="hidden text-xs text-amber-800 bg-amber-100 border border-amber-300 p-2 rounded-lg font-medium"></p>
+         <p id="selAlreadyDeliveredWarn" class="hidden text-xs text-red-700 bg-red-100 border border-red-300 p-2 rounded-lg font-semibold"></p>
+       </div>
+
+       <!-- Llista desplegable de societats -->
+       <div id="societyList" class="max-h-64 overflow-y-auto space-y-2 pr-1"></div>
+     </section>
+
+     <!-- 2. DADES DE L'ENTREGA -->
+     <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+       <h2 class="text-lg font-semibold text-slate-700 border-b pb-2">2. Dades de l'entrega</h2>
+
+       <div>
+         <label for="receiverName" class="block text-sm font-medium text-slate-700 mb-1">Nom a qui se li entrega (Receptor)</label>
+         <input type="text" id="receiverName" placeholder="Nom i cognoms de qui recull el gra" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition" required>
+       </div>
+
+       <div class="grid grid-cols-2 gap-3">
+         <div>
+           <label for="sacsInput" class="block text-sm font-medium text-slate-700 mb-1">Sacs entregats</label>
+           <input type="number" id="sacsInput" oninput="syncKgFromSacs()" min="0" placeholder="0" class="w-full p-3 border border-slate-300 rounded-lg font-bold text-center focus:ring-2 focus:ring-brand-500 outline-none transition" required>
+         </div>
+         <div>
+           <label for="kgInput" class="block text-sm font-medium text-slate-700 mb-1">Kgr Blat (40 kg/sac)</label>
+           <input type="number" id="kgInput" min="0" placeholder="0" class="w-full p-3 border border-slate-300 rounded-lg font-bold text-center bg-slate-50 focus:ring-2 focus:ring-brand-500 outline-none transition" required>
+         </div>
+       </div>
+
+       <div>
+         <label for="workerName" class="block text-sm font-medium text-slate-700 mb-1">Entregat per (Treballador Tragsa)</label>
+         <input type="text" id="workerName" oninput="saveWorkerName()" placeholder="El teu nom" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition" required>
+       </div>
+
+       <div>
+         <label for="deliveryDate" class="block text-sm font-medium text-slate-700 mb-1">Data i Hora</label>
+         <input type="datetime-local" id="deliveryDate" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition" required>
+       </div>
+
+       <div>
+         <label for="observations" class="block text-sm font-medium text-slate-700 mb-1">Observacions <span class="text-xs font-normal text-slate-400">(Opcional)</span></label>
+         <textarea id="observations" rows="2" placeholder="Ex: Recull el president en nom de la societat..." class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition text-sm resize-y"></textarea>
+       </div>
+     </section>
+
+     <!-- 3. SIGNATURA -->
+     <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
+       <div class="flex justify-between items-center mb-3 border-b pb-2">
+         <h2 class="text-lg font-semibold text-slate-700">3. Signatura del receptor</h2>
+         <button type="button" id="clearSigBtn" class="text-sm text-red-500 hover:text-red-700 font-medium">Netejar firma</button>
+       </div>
+       <div class="border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 overflow-hidden relative touch-none">
+         <span id="sigPlaceholder" class="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none">Firma aquí...</span>
+         <canvas id="signatureCanvas" class="w-full h-40 cursor-crosshair block"></canvas>
+       </div>
+     </section>
+
+     <!-- BOTÓ FIX INFERIOR -->
+     <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-30">
+       <div class="max-w-md mx-auto">
+         <button id="saveDeliveryBtn" class="w-full bg-brand-600 text-white text-lg font-bold py-4 px-6 rounded-xl shadow-lg hover:bg-brand-700 active:scale-95 transition flex items-center justify-center gap-2">
+           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+           </svg>
+           Registrar Entrega
+         </button>
+       </div>
+     </div>
+   </div>
+ </main>
+
+ <script>
+ // === CONFIGURACIÓ ===
+ const ACCESS_PASS = "tragsa2026";
+ const AUTH_KEY = "blatMoro_Auth_2026";
+ const WORKER_NAME_KEY = "blatMoro_WorkerName";
+ const WEB_APP_URL = "POSA_AQUI_LA_TEVA_URL_D_APPS_SCRIPT";
+
+ // === LLISTA DE SOCIETATS (NOVEMBRE 2026) ===
+ const societiesData = [
+   { matricula: "B-10109", titular: "CASAL FAMILIAR DE VILADECAVALLS", comarca: "Vallès Occidental", terme: "Viladecavalls / Ullastrell", kg: 400, sacs: 10, contacte: "ANTONI BERCERO: 696844687", obs: "" },
+   { matricula: "B-10276", titular: "SOCIETAT DE CAÇADORS DE POLINYÀ", comarca: "Vallès Oriental", terme: "Polinyà", kg: 400, sacs: 10, contacte: "Joan Silvestre 680699967", obs: "" },
+   { matricula: "B-10368", titular: "Titular privat LODP 15/1999", comarca: "Anoia", terme: "Pierola / Masquefa", kg: 400, sacs: 10, contacte: "ENRIC VELEZ: 678297407", obs: "" },
+   { matricula: "B-ZS030", titular: "Vacarisses", comarca: "Vallès Occidental", terme: "", kg: 400, sacs: 10, contacte: "", obs: "" },
+   { matricula: "B-10004", titular: 'SOCIETAT CAÇADORS "LA MARESME"', comarca: "Maresme", terme: "Teià / Vilassar de Dalt / Premià de Dalt", kg: 600, sacs: 15, contacte: "VICENÇ JACAS: 609726512", obs: "" },
+   { matricula: "B-10051", titular: "SOCIETAT CAÇADORS DE BIGUES I RIELLS", comarca: "Vallès Oriental", terme: "Bigues i Riells", kg: 600, sacs: 15, contacte: "Andres Salas 650036284", obs: "" },
+   { matricula: "B-10089", titular: 'SOCIETAT CAÇADORS "LA CODINENCA"', comarca: "Vallès Oriental", terme: "Sant Feliu de Codines", kg: 600, sacs: 15, contacte: "Salvador Rovira 618044992", obs: "" },
+   { matricula: "B-10099", titular: "SOCIETAT CAÇADORS DE GALLIFA", comarca: "Vallès Occidental", terme: "Gallifa", kg: 600, sacs: 15, contacte: "Marc Sobregrau 626508205", obs: "" },
+   { matricula: "B-10103", titular: 'SOCIETAT CAÇADORS "L\'ESQUIROL PETIT"', comarca: "Vallès Oriental", terme: "Lliçà d'Amunt", kg: 600, sacs: 15, contacte: "JORDI ROCA: 666942591", obs: "" },
+   { matricula: "B-10140", titular: "SOCIETAT CAÇADORS D'ESPARREGUERA", comarca: "Baix Llobregat / Anoia", terme: "Esparraguera / Els Hostalets de Pierola", kg: 600, sacs: 15, contacte: "JUAN AGUSTIN: 619445241", obs: "" },
+   { matricula: "B-10279", titular: "SOCIETAT CAÇADORS MONTORNÈS DEL VALLÈS", comarca: "Vallès Oriental", terme: "Montornès del Vallès", kg: 600, sacs: 15, contacte: "PERE PARERA: 606069910", obs: "" },
+   { matricula: "B-10325", titular: "SOCIETAT CAÇADORS DE PIEROLA", comarca: "Anoia", terme: "Els Hostalets de Pierola", kg: 600, sacs: 15, contacte: "ENRIC VELEZ: 678297406", obs: "FER ENVIAMENT AMB: Juan Luque" },
+   { matricula: "B-10375_B-10141", titular: "ASSOCIACIÓ PROPIETARIS A.P.E.C.R.O.", comarca: "Baix Llobregat", terme: "Castellví de Rosanes", kg: 600, sacs: 15, contacte: "PERE ESTEVE: 647850328", obs: "" },
+   { matricula: "B-10431", titular: "SOCIETAT CAÇADORS DE TERRASSA", comarca: "Vallès Occidental", terme: "Vacarisses", kg: 600, sacs: 15, contacte: "JUAN SANCHEZ: 656962314", obs: "" },
+   { matricula: "B-10082", titular: 'SOCIETAT CAÇADORS "EL SENGLAR"', comarca: "Vallès Oriental", terme: "Caldes de Montbui", kg: 800, sacs: 20, contacte: "DAVID AGUT: 647280863", obs: "" },
+   { matricula: "B-10106", titular: "SOCIETAT CAÇADORS DE SENTMENAT", comarca: "Vallès Occidental", terme: "Sentmenat", kg: 800, sacs: 20, contacte: "JOSE ANT. MONTOYA: 679713521", obs: "" },
+   { matricula: "B-10147", titular: "SOCIETAT CAÇADORS DE MARTORELL", comarca: "Baix Llobregat", terme: "Castellbisbal / Martorell / Castellví de Rosanes", kg: 800, sacs: 20, contacte: "PERE ESTEVE AMAT 647850328", obs: "" },
+   { matricula: "B-10153", titular: "SOCIETAT CAÇADORS D'ALELLA", comarca: "Maresme", terme: "Alella / Teià / Tiana / Vallromanes", kg: 800, sacs: 20, contacte: "JORGE CASTRO: 657876669", obs: "" },
+   { matricula: "B-10005", titular: "SOCIETAT CAÇADORS DE VALLROMANES", comarca: "Vallès Oriental", terme: "Vallromanes", kg: 1000, sacs: 25, contacte: "MARC DOMINGUEZ: 607689797", obs: "" },
+   { matricula: "B-10167", titular: "SOCIETAT CAÇADORS D'OLESA DE MONTSERRAT", comarca: "Baix Llobregat", terme: "Olesa de Montserrat / Esparraguera", kg: 1000, sacs: 25, contacte: "JOSE GARCIA: 620977629 / OLGA: 645590933", obs: "" },
+   { matricula: "B-10174", titular: "SOCIETAT CAÇADORS ST. ESTEVE SESROVIRES", comarca: "Baix Llobregat", terme: "Sant Esteve Sesrovires / Martorell", kg: 1000, sacs: 25, contacte: "JESUS ORTIGOSA: 679691075 / ARMAND: 679452474", obs: "FER ENVIAMENT A:" },
+   { matricula: "B-10347", titular: "SOCIETAT CAÇADORS DE PALAU DE PLEGAMANS", comarca: "Vallès Occidental / Vallès Oriental", terme: "Palau-Solità i Plegamans / Parets / Caldes", kg: 1000, sacs: 25, contacte: "JOAQUIM ZARZOSO: 689235610", obs: "FER ENVIAMENT A: Whatsapp - Divendres 14.00h" },
+   { matricula: "B-10054", titular: "SOCIETAT CAÇADORS CASTELLARENSE", comarca: "Vallès Occidental", terme: "Castellar del Vallès", kg: 1200, sacs: 30, contacte: "TONI MOYA: 627476290", obs: "" },
+   { matricula: "B-10078", titular: "SOCIETAT CAÇADORS DE SANTA INÉS", comarca: "Vallès Oriental", terme: "La Roca del Vallès / Vilanova del Vallès", kg: 1200, sacs: 30, contacte: "ANTONIO MORALES: 666441309", obs: "" },
+   { matricula: "B-10122", titular: 'SOCIETAT CAÇADORS "LA MARTA"', comarca: "Vallès Oriental", terme: "Sant Fost / Santa Maria Martorelles / Martorelles", kg: 1200, sacs: 30, contacte: "ENRIC IBAC: 646899128 / IVAN PEREZ: 637091357", obs: "" }
+ ];
+
+ // Estat en temps real (sincronitzat amb l'Excel)
+ let deliveryStatusMap = {}; // { "B-10109": { entregat: true, data: "...", rebutPer: "..." } }
+ let selectedSociety = null;
+ let currentFilter = "PENDENT";
+ let pendingPayload = null;
+ let lastSentPayload = null;
+
+ // === LOGIN ===
+ const loginForm = document.getElementById('loginForm');
+ const passwordInput = document.getElementById('passwordInput');
+ const rememberPass = document.getElementById('rememberPass');
+ const passwordError = document.getElementById('passwordError');
+ const enterInventoryBtn = document.getElementById('enterInventory');
+
+ function unlockApp() {
+   document.getElementById('welcomeScreen').hidden = true;
+   document.querySelector('header').removeAttribute('inert');
+   document.querySelector('main').removeAttribute('inert');
+ }
+
+ if (localStorage.getItem(AUTH_KEY) === ACCESS_PASS) {
+   passwordInput.value = ACCESS_PASS;
+   rememberPass.checked = true;
+   enterInventoryBtn.focus();
+ }
+
+ loginForm.addEventListener('submit', (e) => {
+   e.preventDefault();
+   if (passwordInput.value === ACCESS_PASS) {
+     if (rememberPass.checked) localStorage.setItem(AUTH_KEY, ACCESS_PASS);
+     else localStorage.removeItem(AUTH_KEY);
+     unlockApp();
+   } else {
+     passwordError.classList.remove('hidden');
+     passwordInput.value = '';
+     passwordInput.focus();
+     if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+   }
+ });
+ passwordInput.addEventListener('input', () => passwordError.classList.add('hidden'));
+
+ // === ELEMENTS UI ===
+ const loadingOverlay = document.getElementById('loadingOverlay');
+ const loadingText = document.getElementById('loadingText');
+ const errorBanner = document.getElementById('errorBanner');
+ const errorMessage = document.getElementById('errorMessage');
+ const formContainer = document.getElementById('formContainer');
+ const successScreen = document.getElementById('successScreen');
+ const dateInput = document.getElementById('deliveryDate');
+ const summaryModal = document.getElementById('summaryModal');
+ const canvas = document.getElementById('signatureCanvas');
+ const ctx = canvas.getContext('2d');
+ const sigPlaceholder = document.getElementById('sigPlaceholder');
+
+ function setNowDate() {
+   const now = new Date();
+   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+   dateInput.value = now.toISOString().slice(0, 16);
+ }
+ setNowDate();
+
+ const savedWorker = localStorage.getItem(WORKER_NAME_KEY);
+ if (savedWorker) document.getElementById('workerName').value = savedWorker;
+
+ window.saveWorkerName = function() {
+   const val = document.getElementById('workerName').value;
+   if (val.trim()) localStorage.setItem(WORKER_NAME_KEY, val);
+ };
+
+ function showLoading(text) {
+   loadingText.textContent = text;
+   loadingOverlay.classList.remove('hidden');
+ }
+ function hideLoading() { loadingOverlay.classList.add('hidden'); }
+ function showError(msg) {
+   errorMessage.textContent = msg;
+   errorBanner.classList.remove('hidden');
+   setTimeout(() => errorBanner.classList.add('hidden'), 10000);
+   window.scrollTo({ top: 0, behavior: 'smooth' });
+ }
+
+ // === GESTIÓ DE SOCIETATS I ESTAT ===
+ function isDelivered(matricula) {
+   const info = deliveryStatusMap[matricula.toUpperCase()];
+   return info && info.entregat === true;
+ }
+
+ function updateCounters() {
+   const total = societiesData.length;
+   const delivered = societiesData.filter(s => isDelivered(s.matricula)).length;
+   document.getElementById('statusCounts').textContent = `${delivered} / ${total} entregats`;
+   document.getElementById('headerProgress').textContent = `${delivered} entregats · ${total - delivered} pendents`;
+ }
+
+ window.setFilter = function(filter) {
+   currentFilter = filter;
+   const btns = {
+     PENDENT: document.getElementById('btnFilterPendent'),
+     ENTREGAT: document.getElementById('btnFilterEntregat'),
+     TOTS: document.getElementById('btnFilterTots')
+   };
+   Object.keys(btns).forEach(k => {
+     if (k === filter) {
+       btns[k].className = "flex-1 py-1.5 px-2 text-xs font-bold rounded-lg border transition bg-brand-600 text-white border-brand-600";
+     } else {
+       btns[k].className = "flex-1 py-1.5 px-2 text-xs font-bold rounded-lg border transition bg-white text-slate-600 border-slate-300";
+     }
+   });
+   renderSocietyList();
+ };
+
+ function renderSocietyList() {
+   const listEl = document.getElementById('societyList');
+   const query = document.getElementById('matriculaInput').value.trim().toLowerCase();
+   listEl.innerHTML = '';
+
+   const filtered = societiesData.filter(s => {
+     const deliv = isDelivered(s.matricula);
+     if (currentFilter === 'PENDENT' && deliv && !query) return false;
+     if (currentFilter === 'ENTREGAT' && !deliv && !query) return false;
+     if (!query) return true;
+     return s.matricula.toLowerCase().includes(query) ||
+            s.titular.toLowerCase().includes(query) ||
+            s.terme.toLowerCase().includes(query) ||
+            s.comarca.toLowerCase().includes(query);
+   });
+
+   if (filtered.length === 0) {
+     listEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Cap societat trobada amb aquest filtre. Pots introduir la matrícula manualment igualment.</p>`;
+     return;
+   }
+
+   filtered.forEach(s => {
+     const deliv = isDelivered(s.matricula);
+     const isSel = selectedSociety && selectedSociety.matricula === s.matricula;
+     const div = document.createElement('button');
+     div.type = "button";
+     div.onclick = () => selectSociety(s);
+     div.className = `w-full text-left p-3 rounded-lg border transition flex items-center justify-between gap-2 ${
+       isSel ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-400' :
+       deliv ? 'border-slate-200 bg-slate-50/80 opacity-80' : 'border-slate-200 bg-white hover:border-brand-400'
+     }`;
+     div.innerHTML = `
+       <div class="min-w-0 flex-1">
+         <div class="flex items-center gap-2">
+           <span class="text-xs font-bold px-2 py-0.5 rounded ${deliv ? 'bg-brand-100 text-brand-800' : 'bg-slate-800 text-white'}">${s.matricula}</span>
+           <span class="text-xs font-semibold text-slate-500">${s.sacs} sacs (${s.kg} kg)</span>
+         </div>
+         <p class="text-sm font-semibold text-slate-800 mt-1 truncate">${s.titular}</p>
+         <p class="text-xs text-slate-500 truncate">${s.comarca}${s.terme ? ' · ' + s.terme : ''}</p>
+       </div>
+       <span class="text-[11px] font-bold px-2 py-1 rounded-full shrink-0 ${
+         deliv ? 'bg-brand-100 text-brand-700 border border-brand-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
+       }">${deliv ? 'ENTREGAT' : 'PENDENT'}</span>
+     `;
+     listEl.appendChild(div);
+   });
+ }
+
+ window.selectSociety = function(s) {
+   selectedSociety = s;
+   document.getElementById('matriculaInput').value = s.matricula;
+   document.getElementById('clearMatriculaBtn').classList.remove('hidden');
+   document.getElementById('sacsInput').value = s.sacs;
+   document.getElementById('kgInput').value = s.kg;
+
+   const card = document.getElementById('selectedSocietyCard');
+   card.classList.remove('hidden');
+   document.getElementById('selMatricula').textContent = s.matricula;
+   document.getElementById('selTitular').textContent = s.titular;
+   document.getElementById('selUbicacio').textContent = `${s.comarca}${s.terme ? ' — ' + s.terme : ''}`;
+   document.getElementById('selSacs').textContent = `📦 ${s.sacs} sacs`;
+   document.getElementById('selKg').textContent = `⚖️ ${s.kg} kg`;
+   document.getElementById('selContacte').textContent = s.contacte ? `📞 ${s.contacte}` : '';
+
+   const obsEl = document.getElementById('selObsOrig');
+   if (s.obs) {
+     obsEl.textContent = `ℹ️ Nota: ${s.obs}`;
+     obsEl.classList.remove('hidden');
+   } else {
+     obsEl.classList.add('hidden');
+   }
+
+   const statusBadge = document.getElementById('selStatusBadge');
+   const warnEl = document.getElementById('selAlreadyDeliveredWarn');
+   const info = deliveryStatusMap[s.matricula.toUpperCase()];
+   if (info && info.entregat) {
+     statusBadge.textContent = "JA ENTREGAT";
+     statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full shrink-0 bg-brand-200 text-brand-800";
+     warnEl.textContent = `⚠️ Aquesta societat ja consta entregada${info.rebutPer ? ' a ' + info.rebutPer : ''}${info.data ? ' (' + info.data + ')' : ''}.`;
+     warnEl.classList.remove('hidden');
+   } else {
+     statusBadge.textContent = "PENDENT";
+     statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full shrink-0 bg-amber-100 text-amber-800";
+     warnEl.classList.add('hidden');
+   }
+
+   renderSocietyList();
+ };
+
+ window.onMatriculaInput = function() {
+   const val = document.getElementById('matriculaInput').value.trim();
+   document.getElementById('clearMatriculaBtn').classList.toggle('hidden', val === "");
+   const exactMatch = societiesData.find(s => s.matricula.toLowerCase() === val.toLowerCase());
+   if (exactMatch) {
+     selectSociety(exactMatch);
+   } else {
+     selectedSociety = null;
+     document.getElementById('selectedSocietyCard').classList.add('hidden');
+     renderSocietyList();
+   }
+ };
+
+ window.clearSelection = function() {
+   selectedSociety = null;
+   document.getElementById('matriculaInput').value = '';
+   document.getElementById('clearMatriculaBtn').classList.add('hidden');
+   document.getElementById('selectedSocietyCard').classList.add('hidden');
+   document.getElementById('sacsInput').value = '';
+   document.getElementById('kgInput').value = '';
+   renderSocietyList();
+ };
+
+ window.syncKgFromSacs = function() {
+   const sacs = parseInt(document.getElementById('sacsInput').value, 10);
+   if (!isNaN(sacs) && sacs >= 0) {
+     document.getElementById('kgInput').value = sacs * 40;
+   }
+ };
+
+ // Consulta l'estat actual de l'Excel
+ window.fetchStatus = async function() {
+   if (!WEB_APP_URL || WEB_APP_URL.includes("POSA_AQUI")) {
+     updateCounters();
+     renderSocietyList();
+     return;
+   }
+   try {
+     const res = await fetch(WEB_APP_URL);
+     if (!res.ok) return;
+     const data = await res.json();
+     if (data.status === "èxit" && data.estats) {
+       deliveryStatusMap = {};
+       for (const key in data.estats) {
+         deliveryStatusMap[key.trim().toUpperCase()] = data.estats[key];
+       }
+     }
+   } catch (e) {}
+   updateCounters();
+   renderSocietyList();
+   if (selectedSociety) selectSociety(selectedSociety);
+ };
+
+ updateCounters();
+ renderSocietyList();
+ fetchStatus();
+
+ // === CANVAS DE SIGNATURA ===
+ let isSigning = false;
+ let hasSigned = false;
+
+ function resizeCanvas() {
+   const rect = canvas.getBoundingClientRect();
+   canvas.width = rect.width;
+   canvas.height = rect.height;
+   ctx.lineWidth = 3;
+   ctx.lineCap = 'round';
+   ctx.strokeStyle = '#1e293b';
+ }
+ window.addEventListener('resize', resizeCanvas);
+ setTimeout(resizeCanvas, 150);
+
+ function getPos(e) {
+   const rect = canvas.getBoundingClientRect();
+   const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+   const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+   return { x: clientX - rect.left, y: clientY - rect.top };
+ }
+ function startDrawing(e) {
+   isSigning = true; hasSigned = true; sigPlaceholder.style.display = 'none';
+   const pos = getPos(e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
+   if (e.cancelable) e.preventDefault();
+ }
+ function draw(e) {
+   if (!isSigning) return;
+   const pos = getPos(e); ctx.lineTo(pos.x, pos.y); ctx.stroke();
+   if (e.cancelable) e.preventDefault();
+ }
+ function stopDrawing() { isSigning = false; }
+
+ canvas.addEventListener('mousedown', startDrawing);
+ canvas.addEventListener('mousemove', draw);
+ canvas.addEventListener('mouseup', stopDrawing);
+ canvas.addEventListener('mouseout', stopDrawing);
+ canvas.addEventListener('touchstart', startDrawing, { passive: false });
+ canvas.addEventListener('touchmove', draw, { passive: false });
+ canvas.addEventListener('touchend', stopDrawing);
+
+ document.getElementById('clearSigBtn').addEventListener('click', () => {
+   ctx.clearRect(0, 0, canvas.width, canvas.height);
+   hasSigned = false;
+   sigPlaceholder.style.display = 'flex';
+ });
+
+ // === VALIDACIÓ I RESUM ===
+ document.getElementById('saveDeliveryBtn').addEventListener('click', () => {
+   const matricula = document.getElementById('matriculaInput').value.trim().toUpperCase();
+   const receiverName = document.getElementById('receiverName').value.trim();
+   const workerName = document.getElementById('workerName').value.trim();
+   const date = document.getElementById('deliveryDate').value;
+   const sacs = parseInt(document.getElementById('sacsInput').value, 10);
+   const kg = parseInt(document.getElementById('kgInput').value, 10);
+   const observations = document.getElementById('observations').value.trim();
+
+   if (!matricula) { showError("Introdueix o selecciona la matrícula / codi de societat."); return; }
+   if (!receiverName) { showError("Introdueix el nom de la persona a qui s'entrega el gra."); return; }
+   if (isNaN(sacs) || sacs <= 0) { showError("Indica una quantitat vàlida de sacs."); return; }
+   if (!workerName) { showError("Introdueix el teu nom (treballador que entrega)."); return; }
+   if (!date) { showError("Introdueix la data i hora."); return; }
+   if (!hasSigned) { showError("És necessari recollir la signatura abans de desar."); return; }
+
+   localStorage.setItem(WORKER_NAME_KEY, workerName);
+
+   const titular = selectedSociety ? selectedSociety.titular : "Societat no llistada";
+   pendingPayload = {
+     matricula: matricula,
+     titular: titular,
+     sacs: sacs,
+     kg: isNaN(kg) ? sacs * 40 : kg,
+     rebutPer: receiverName,
+     treballador: workerName,
+     data: date,
+     observacions: observations,
+     firma: canvas.toDataURL('image/png')
+   };
+
+   document.getElementById('summaryMatriculaBadge').textContent = matricula;
+   document.getElementById('summarySocietat').textContent = titular;
+   document.getElementById('summaryQty').textContent = `${pendingPayload.sacs} sacs (${pendingPayload.kg} kg)`;
+   document.getElementById('summaryReceiver').textContent = receiverName;
+   document.getElementById('summaryWorker').textContent = workerName;
+   document.getElementById('summaryDate').textContent = date.replace('T', ' ');
+
+   const obsCont = document.getElementById('summaryObsContainer');
+   if (observations) {
+     document.getElementById('summaryObsText').textContent = observations;
+     obsCont.classList.remove('hidden');
+   } else {
+     obsCont.classList.add('hidden');
+   }
+
+   summaryModal.classList.remove('hidden');
+ });
+
+ document.getElementById('cancelSummaryBtn').addEventListener('click', () => {
+   summaryModal.classList.add('hidden');
+ });
+
+ // === ENVIAMENT A APPS SCRIPT ===
+ document.getElementById('confirmSendBtn').addEventListener('click', async () => {
+   if (!pendingPayload) return;
+   summaryModal.classList.add('hidden');
+   showLoading("Desant entrega a l'Excel...");
+
+   try {
+     const res = await fetch(WEB_APP_URL, {
+       method: 'POST',
+       body: JSON.stringify(pendingPayload)
+     });
+     const text = await res.text();
+     const result = JSON.parse(text);
+
+     if (result.status === "èxit") {
+       hideLoading();
+       lastSentPayload = pendingPayload;
+       deliveryStatusMap[pendingPayload.matricula.toUpperCase()] = {
+         entregat: true,
+         data: pendingPayload.data,
+         rebutPer: pendingPayload.rebutPer
+       };
+       pendingPayload = null;
+       updateCounters();
+       document.getElementById('successSubtitle').textContent = `${lastSentPayload.matricula} · ${lastSentPayload.sacs} sacs entregats a ${lastSentPayload.rebutPer}.`;
+       formContainer.classList.add('hidden');
+       successScreen.classList.remove('hidden');
+     } else {
+       throw new Error(result.missatge || "Error desconegut a Apps Script.");
+     }
+   } catch (error) {
+     hideLoading();
+     showError("Error en desar l'entrega: " + error.message);
+   }
+ });
+
+ window.shareWhatsApp = function() {
+   if (!lastSentPayload) return;
+   let text = `*Entrega Blat de Moro - Tragsa*\n`;
+   text += `🏷️ Matrícula: *${lastSentPayload.matricula}*\n`;
+   text += `🏛️ Societat: ${lastSentPayload.titular}\n`;
+   text += `📦 Quantitat: *${lastSentPayload.sacs} sacs* (${lastSentPayload.kg} kg)\n`;
+   text += `👤 Rebut per: ${lastSentPayload.rebutPer}\n`;
+   text += `👷 Entregat per: ${lastSentPayload.treballador}\n`;
+   text += `📅 Data: ${lastSentPayload.data.replace('T', ' ')}`;
+   if (lastSentPayload.observacions) {
+     text += `\n📝 Observacions: ${lastSentPayload.observacions}`;
+   }
+   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+ };
+
+ window.resetForm = function() {
+   clearSelection();
+   document.getElementById('receiverName').value = '';
+   document.getElementById('observations').value = '';
+   ctx.clearRect(0, 0, canvas.width, canvas.height);
+   hasSigned = false;
+   sigPlaceholder.style.display = 'flex';
+   setNowDate();
+   successScreen.classList.add('hidden');
+   formContainer.classList.remove('hidden');
+   fetchStatus();
+   window.scrollTo({ top: 0, behavior: 'smooth' });
+ };
+
+ if ('serviceWorker' in navigator) {
+   navigator.serviceWorker.register('sw.js');
+ }
+ </script>
+</body>
+</html>
